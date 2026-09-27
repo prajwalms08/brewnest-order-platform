@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import Barista from "./Barista";
+import CustomerStatus from "./CustomerStatus";
 
 const API_URL = "http://127.0.0.1:9000";
 
@@ -261,6 +262,9 @@ function App() {
   if (window.location.pathname === "/barista") {
     return <Barista />;
   }
+  if (window.location.pathname === "/customer-status") {
+  return <CustomerStatus />;
+  } 
 
   return (
     <div
