@@ -25,8 +25,20 @@ class OrderService:
         order_items = []
 
         for item in order_data.items:
+            modifier_total = sum(
+                (
+                    modifier.price
+                    for modifier in item.modifiers
+                ),
+                Decimal("0.00"),
+            )
+
+            item_price = (
+                item.unit_price + modifier_total
+            )
+
             subtotal = (
-                item.unit_price * item.quantity
+                item_price * item.quantity
             )
 
             total_amount += subtotal
@@ -37,6 +49,13 @@ class OrderService:
                     quantity=item.quantity,
                     unit_price=item.unit_price,
                     subtotal=subtotal,
+                    modifiers=[
+                        {
+                            "name": modifier.name,
+                            "price": float(modifier.price),
+                        }
+                        for modifier in item.modifiers
+                    ],
                 )
             )
 
@@ -81,6 +100,27 @@ class OrderService:
             order_id,
         )
 
+        if order is None:
+            return None
+
+        allowed_statuses = [
+            "CREATED",
+            "PREPARING",
+            "READY",
+        ]
+
+        if status not in allowed_statuses:
+            raise ValueError(
+                "Invalid order status"
+            )
+
+        order.status = status
+
+        db.commit()
+        db.refresh(order)
+
+        return order
+
     @staticmethod
     def cancel_order(
         db: Session,
@@ -101,27 +141,6 @@ class OrderService:
             )
 
         order.status = "CANCELLED"
-
-        db.commit()
-        db.refresh(order)
-
-        return order    
-
-        if order is None:  
-            return None
-
-        allowed_statuses = [
-            "CREATED",
-            "PREPARING",
-            "READY",
-        ]
-
-        if status not in allowed_statuses:
-            raise ValueError(
-                "Invalid order status"
-            )
-
-        order.status = status
 
         db.commit()
         db.refresh(order)
