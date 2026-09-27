@@ -1,4 +1,4 @@
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
 
 from app.models.order import Order
 from app.models.order_item import OrderItem
@@ -10,6 +10,7 @@ class OrderRepository:
     def get_order_by_id(db: Session, order_id: int) -> Order | None:
         return (
             db.query(Order)
+            .options(joinedload(Order.items))
             .filter(Order.id == order_id)
             .first()
         )

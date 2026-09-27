@@ -13,10 +13,22 @@ class OrderCreate(BaseModel):
     items: list[OrderItemCreate]
 
 
+class OrderItemResponse(BaseModel):
+    id: int
+    item_name: str
+    quantity: int
+    unit_price: Decimal
+    subtotal: Decimal
+
+    class Config:
+        from_attributes = True
+
+
 class OrderResponse(BaseModel):
     id: int
     status: str
     total_amount: Decimal
+    items: list[OrderItemResponse] = []
 
     class Config:
         from_attributes = True
