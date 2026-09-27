@@ -13,7 +13,10 @@ if TYPE_CHECKING:
 class OrderItem(Base):
     __tablename__ = "order_items"
 
-    id: Mapped[int] = mapped_column(primary_key=True, index=True)
+    id: Mapped[int] = mapped_column(
+        primary_key=True,
+        index=True,
+    )
 
     order_id: Mapped[int] = mapped_column(
         ForeignKey("orders.id"),
@@ -40,6 +43,7 @@ class OrderItem(Base):
         Numeric(10, 2),
         nullable=False,
     )
+
     order: Mapped["Order"] = relationship(
         back_populates="items",
     )
