@@ -5,7 +5,7 @@ from app.integrations.razorpay import RazorpayClient
 from app.models.order import Order
 from app.models.payment import Payment
 from app.repositories.payment_repository import PaymentRepository
-from app.schemas.payment import PaymentCreate
+from app.schemas.payment import PaymentCreate, PaymentVerify
 
 
 class PaymentService:
@@ -48,3 +48,48 @@ class PaymentService:
             db=db,
             payment=payment,
         )
+
+    @staticmethod
+    def verify_payment(
+        db: Session,
+        payment_data: PaymentVerify,
+    ) -> Payment:
+
+        payment = (
+            db.query(Payment)
+            .filter(
+                Payment.razorpay_order_id
+                == payment_data.razorpay_order_id
+            )
+            .first()
+        )
+
+        if payment is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Payment not found",
+            )
+
+        razorpay_client = RazorpayClient()
+
+        try:
+            razorpay_client.verify_payment_signature(
+                razorpay_order_id=payment_data.razorpay_order_id,
+                razorpay_payment_id=payment_data.razorpay_payment_id,
+                razorpay_signature=payment_data.razorpay_signature,
+            )
+        except Exception:
+            raise HTTPException(
+                status_code=400,
+                detail="Payment verification failed",
+            )
+
+        payment.razorpay_payment_id = (
+            payment_data.razorpay_payment_id
+        )
+        payment.status = "PAID"
+
+        db.commit()
+        db.refresh(payment)
+
+        return payment
