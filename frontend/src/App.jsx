@@ -9,8 +9,8 @@ function App() {
   const [cart, setCart] = useState([]);
   const [order, setOrder] = useState(null);
   const [orders, setOrders] = useState([]);
+  const [selectedModifiers, setSelectedModifiers] = useState({});
 
-  // Load menu
   useEffect(() => {
     fetch(`${API_URL}/menu/`)
       .then((response) => response.json())
@@ -22,16 +22,55 @@ function App() {
       });
   }, []);
 
-  // Add item to cart
+  const toggleModifier = (itemId, modifier) => {
+    setSelectedModifiers((current) => {
+      const currentModifiers = current[itemId] || [];
+
+      const alreadySelected = currentModifiers.some(
+        (selected) => selected.name === modifier.name
+      );
+
+      if (alreadySelected) {
+        return {
+          ...current,
+          [itemId]: currentModifiers.filter(
+            (selected) => selected.name !== modifier.name
+          ),
+        };
+      }
+
+      return {
+        ...current,
+        [itemId]: [...currentModifiers, modifier],
+      };
+    });
+  };
+
   const addToCart = (item) => {
+    const modifiers = selectedModifiers[item.id] || [];
+
+    const modifierTotal = modifiers.reduce(
+      (sum, modifier) => sum + Number(modifier.price),
+      0
+    );
+
+    const itemPrice =
+      Number(item.price) + modifierTotal;
+
+    const cartKey =
+      `${item.id}-${modifiers
+        .map((modifier) => modifier.name)
+        .sort()
+        .join("-")}`;
+
     setCart((currentCart) => {
       const existingItem = currentCart.find(
-        (cartItem) => cartItem.id === item.id
+        (cartItem) => cartItem.cartKey === cartKey
       );
 
       if (existingItem) {
         return currentCart.map((cartItem) =>
-          cartItem.id === item.id
+          cartItem.cartKey === cartKey
             ? {
                 ...cartItem,
                 quantity: cartItem.quantity + 1,
@@ -45,17 +84,24 @@ function App() {
         {
           ...item,
           quantity: 1,
+          modifiers,
+          itemPrice,
+          cartKey,
         },
       ];
     });
+
+    setSelectedModifiers((current) => ({
+      ...current,
+      [item.id]: [],
+    }));
   };
 
-  // Decrease item quantity
-  const decreaseQuantity = (itemId) => {
+  const decreaseQuantity = (cartKey) => {
     setCart((currentCart) =>
       currentCart
         .map((item) =>
-          item.id === itemId
+          item.cartKey === cartKey
             ? {
                 ...item,
                 quantity: item.quantity - 1,
@@ -66,21 +112,20 @@ function App() {
     );
   };
 
-  // Remove item from cart
-  const removeFromCart = (itemId) => {
+  const removeFromCart = (cartKey) => {
     setCart((currentCart) =>
-      currentCart.filter((item) => item.id !== itemId)
+      currentCart.filter(
+        (item) => item.cartKey !== cartKey
+      )
     );
   };
 
-  // Calculate cart total
   const total = cart.reduce(
     (sum, item) =>
-      sum + Number(item.price) * item.quantity,
+      sum + item.itemPrice * item.quantity,
     0
   );
 
-  // Place order
   const placeOrder = async () => {
     if (cart.length === 0) {
       alert("Cart is empty");
@@ -92,17 +137,24 @@ function App() {
         item_name: item.name,
         quantity: item.quantity,
         unit_price: Number(item.price),
+        modifiers: item.modifiers.map((modifier) => ({
+          name: modifier.name,
+          price: Number(modifier.price),
+        })),
       })),
     };
 
     try {
-      const response = await fetch(`${API_URL}/orders/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(orderData),
-      });
+      const response = await fetch(
+        `${API_URL}/orders/`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(orderData),
+        }
+      );
 
       if (!response.ok) {
         throw new Error("Failed to create order");
@@ -113,37 +165,53 @@ function App() {
       setOrder(data);
       setCart([]);
 
-      alert(`Order #${data.id} created successfully`);
+      alert(
+        `Order #${data.id} created successfully`
+      );
     } catch (error) {
-      console.error("Order creation failed:", error);
+      console.error(
+        "Order creation failed:",
+        error
+      );
+
       alert("Failed to create order");
     }
   };
 
-  // Create Razorpay payment
   const createPayment = async () => {
+    if (!order) {
+      return;
+    }
+
     try {
-      const response = await fetch(`${API_URL}/payments/`, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          order_id: order.id,
-          amount: Number(order.total_amount),
-        }),
-      });
+      const response = await fetch(
+        `${API_URL}/payments/`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            order_id: order.id,
+            amount: Number(order.total_amount),
+          }),
+        }
+      );
 
       if (!response.ok) {
-        throw new Error("Failed to create payment");
+        throw new Error(
+          "Failed to create payment"
+        );
       }
 
       const payment = await response.json();
 
       const options = {
+  
         key: "rzp_test_Tgz6IapCSMkZvS",
 
-        amount: Number(order.total_amount) * 100,
+        amount:
+          Number(order.total_amount) * 100,
 
         currency: "INR",
 
@@ -151,29 +219,32 @@ function App() {
 
         description: `Order #${order.id}`,
 
-        order_id: payment.razorpay_order_id,
+        order_id:
+          payment.razorpay_order_id,
 
         handler: async function (response) {
           try {
-            const verifyResponse = await fetch(
-              `${API_URL}/payments/verify`,
-              {
-                method: "POST",
-                headers: {
-                  "Content-Type": "application/json",
-                },
-                body: JSON.stringify({
-                  razorpay_order_id:
-                    response.razorpay_order_id,
+            const verifyResponse =
+              await fetch(
+                `${API_URL}/payments/verify`,
+                {
+                  method: "POST",
+                  headers: {
+                    "Content-Type":
+                      "application/json",
+                  },
+                  body: JSON.stringify({
+                    razorpay_order_id:
+                      response.razorpay_order_id,
 
-                  razorpay_payment_id:
-                    response.razorpay_payment_id,
+                    razorpay_payment_id:
+                      response.razorpay_payment_id,
 
-                  razorpay_signature:
-                    response.razorpay_signature,
-                }),
-              }
-            );
+                    razorpay_signature:
+                      response.razorpay_signature,
+                  }),
+                }
+              );
 
             if (!verifyResponse.ok) {
               throw new Error(
@@ -223,7 +294,6 @@ function App() {
     }
   };
 
-  // Load order history
   const loadOrders = async () => {
     try {
       const response = await fetch(
@@ -240,7 +310,6 @@ function App() {
 
       setOrders(data);
 
-      // Update currently displayed order
       if (order) {
         const updatedOrder = data.find(
           (item) => item.id === order.id
@@ -258,13 +327,19 @@ function App() {
     }
   };
 
-  // Barista page
-  if (window.location.pathname === "/barista") {
+  if (
+    window.location.pathname ===
+    "/barista"
+  ) {
     return <Barista />;
   }
-  if (window.location.pathname === "/customer-status") {
-  return <CustomerStatus />;
-  } 
+
+  if (
+    window.location.pathname ===
+    "/customer-status"
+  ) {
+    return <CustomerStatus />;
+  }
 
   return (
     <div
@@ -272,12 +347,12 @@ function App() {
         maxWidth: "900px",
         margin: "0 auto",
         padding: "20px",
-        fontFamily: "Arial, sans-serif",
+        fontFamily:
+          "Arial, sans-serif",
       }}
     >
       <h1>BrewNest Coffee</h1>
 
-      {/* MENU */}
       <h2>Menu</h2>
 
       {menu.length === 0 ? (
@@ -287,20 +362,79 @@ function App() {
           <div
             key={item.id}
             style={{
-              border: "1px solid #ccc",
+              border:
+                "1px solid #ccc",
               padding: "15px",
-              marginBottom: "10px",
+              marginBottom: "15px",
               borderRadius: "8px",
             }}
           >
             <h3>{item.name}</h3>
 
-            <p>₹{item.price}</p>
+            <p>Base Price: ₹{item.price}</p>
 
             <p>{item.category}</p>
 
+            {item.modifiers &&
+              item.modifiers.length > 0 && (
+                <div>
+                  <h4>Modifiers</h4>
+
+                  {item.modifiers.map(
+                    (modifier) => {
+                      const isSelected =
+                        (
+                          selectedModifiers[
+                            item.id
+                          ] || []
+                        ).some(
+                          (selected) =>
+                            selected.name ===
+                            modifier.name
+                        );
+
+                      return (
+                        <label
+                          key={modifier.name}
+                          style={{
+                            display:
+                              "block",
+                            marginBottom:
+                              "8px",
+                          }}
+                        >
+                          <input
+                            type="checkbox"
+                            checked={
+                              isSelected
+                            }
+                            onChange={() =>
+                              toggleModifier(
+                                item.id,
+                                modifier
+                              )
+                            }
+                          />
+
+                          {" "}
+
+                          {modifier.name}
+                          {" "}
+                          (+₹
+                          {
+                            modifier.price
+                          })
+                        </label>
+                      );
+                    }
+                  )}
+                </div>
+              )}
+
             <button
-              onClick={() => addToCart(item)}
+              onClick={() =>
+                addToCart(item)
+              }
             >
               Add to Cart
             </button>
@@ -310,7 +444,6 @@ function App() {
 
       <hr />
 
-      {/* CART */}
       <h2>Cart</h2>
 
       {cart.length === 0 ? (
@@ -319,9 +452,10 @@ function App() {
         <>
           {cart.map((item) => (
             <div
-              key={item.id}
+              key={item.cartKey}
               style={{
-                border: "1px solid #ccc",
+                border:
+                  "1px solid #ccc",
                 padding: "15px",
                 marginBottom: "10px",
                 borderRadius: "8px",
@@ -330,14 +464,46 @@ function App() {
               <h3>{item.name}</h3>
 
               <p>
-                ₹{item.price} × {item.quantity} = ₹
-                {Number(item.price) *
+                Base price: ₹
+                {item.price}
+              </p>
+
+              {item.modifiers &&
+                item.modifiers.length > 0 && (
+                  <div>
+                    <strong>
+                      Modifiers:
+                    </strong>
+
+                    {item.modifiers.map(
+                      (modifier) => (
+                        <p
+                          key={
+                            modifier.name
+                          }
+                        >
+                          {modifier.name} +₹
+                          {
+                            modifier.price
+                          }
+                        </p>
+                      )
+                    )}
+                  </div>
+                )}
+
+              <p>
+                ₹{item.itemPrice} ×{" "}
+                {item.quantity} = ₹
+                {item.itemPrice *
                   item.quantity}
               </p>
 
               <button
                 onClick={() =>
-                  decreaseQuantity(item.id)
+                  decreaseQuantity(
+                    item.cartKey
+                  )
                 }
               >
                 -
@@ -345,7 +511,8 @@ function App() {
 
               <span
                 style={{
-                  margin: "0 10px",
+                  margin:
+                    "0 10px",
                 }}
               >
                 {item.quantity}
@@ -361,10 +528,13 @@ function App() {
 
               <button
                 onClick={() =>
-                  removeFromCart(item.id)
+                  removeFromCart(
+                    item.cartKey
+                  )
                 }
                 style={{
-                  marginLeft: "10px",
+                  marginLeft:
+                    "10px",
                 }}
               >
                 Remove
@@ -374,13 +544,14 @@ function App() {
 
           <h3>Total: ₹{total}</h3>
 
-          <button onClick={placeOrder}>
+          <button
+            onClick={placeOrder}
+          >
             Place Order
           </button>
         </>
       )}
 
-      {/* CURRENT ORDER */}
       {order && (
         <>
           <hr />
@@ -389,24 +560,31 @@ function App() {
 
           <div
             style={{
-              border: "1px solid #ccc",
+              border:
+                "1px solid #ccc",
               padding: "15px",
               borderRadius: "8px",
             }}
           >
             <p>
-              <strong>Order ID:</strong>{" "}
+              <strong>
+                Order ID:
+              </strong>{" "}
               {order.id}
             </p>
 
             <p>
-              <strong>Status:</strong>{" "}
+              <strong>
+                Status:
+              </strong>{" "}
               {order.status}
             </p>
 
             <p>
-              <strong>Total:</strong> ₹
-              {order.total_amount}
+              <strong>
+                Total:
+              </strong>{" "}
+              ₹{order.total_amount}
             </p>
 
             <button
@@ -418,7 +596,6 @@ function App() {
         </>
       )}
 
-      {/* ORDER HISTORY */}
       <hr />
 
       <h2>Order History</h2>
@@ -434,7 +611,8 @@ function App() {
           <div
             key={item.id}
             style={{
-              border: "1px solid #ccc",
+              border:
+                "1px solid #ccc",
               padding: "15px",
               marginTop: "15px",
               borderRadius: "8px",
@@ -445,35 +623,79 @@ function App() {
             </h3>
 
             <p>
-              <strong>Status:</strong>{" "}
+              <strong>
+                Status:
+              </strong>{" "}
               {item.status}
             </p>
 
             <p>
-              <strong>Total:</strong> ₹
-              {item.total_amount}
+              <strong>
+                Total:
+              </strong>{" "}
+              ₹{item.total_amount}
             </p>
 
-            {item.items &&
-              item.items.length > 0 && (
-                <div>
-                  <strong>Items:</strong>
+            <strong>
+              Items:
+            </strong>
 
-                  {item.items.map(
-                    (orderItem) => (
-                      <p
-                        key={
-                          orderItem.id
-                        }
-                      >
-                        {orderItem.item_name} ×{" "}
-                        {
-                          orderItem.quantity
-                        }
-                      </p>
-                    )
-                  )}
-                </div>
+            {item.items &&
+              item.items.map(
+                (orderItem) => (
+                  <div
+                    key={
+                      orderItem.id
+                    }
+                  >
+                    <p>
+                      {
+                        orderItem.item_name
+                      }{" "}
+                      ×{" "}
+                      {
+                        orderItem.quantity
+                      }
+                    </p>
+
+                    {orderItem.modifiers &&
+                      orderItem
+                        .modifiers
+                        .length >
+                        0 && (
+                        <div
+                          style={{
+                            marginLeft:
+                              "20px",
+                          }}
+                        >
+                          <strong>
+                            Modifiers:
+                          </strong>
+
+                          {orderItem.modifiers.map(
+                            (
+                              modifier
+                            ) => (
+                              <p
+                                key={
+                                  modifier.name
+                                }
+                              >
+                                {
+                                  modifier.name
+                                }{" "}
+                                +₹
+                                {
+                                  modifier.price
+                                }
+                              </p>
+                            )
+                          )}
+                        </div>
+                      )}
+                  </div>
+                )
               )}
           </div>
         ))

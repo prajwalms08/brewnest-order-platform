@@ -1,7 +1,7 @@
 from decimal import Decimal
 from typing import TYPE_CHECKING
 
-from sqlalchemy import ForeignKey, Integer, Numeric, String
+from sqlalchemy import ForeignKey, Integer, JSON, Numeric, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.db.base import Base
@@ -41,6 +41,12 @@ class OrderItem(Base):
 
     subtotal: Mapped[Decimal] = mapped_column(
         Numeric(10, 2),
+        nullable=False,
+    )
+
+    modifiers: Mapped[list[dict]] = mapped_column(
+        JSON,
+        default=list,
         nullable=False,
     )
 

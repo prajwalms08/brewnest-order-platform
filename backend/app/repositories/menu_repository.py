@@ -17,14 +17,35 @@ class MenuRepository:
 
         return menu_items
 
-    def create_menu_item(self, menu_item: dict):
+    def create_menu_item(
+        self,
+        menu_item: dict,
+    ):
         document = menu_item.copy()
 
-        document["price"] = float(document["price"])
+        document["price"] = float(
+            document["price"]
+        )
 
-        result = self.collection.insert_one(document)
+        document["modifiers"] = [
+            {
+                "name": modifier["name"],
+                "price": float(modifier["price"]),
+            }
+            for modifier in document.get(
+                "modifiers",
+                [],
+            )
+        ]
+
+        result = self.collection.insert_one(
+            document
+        )
 
         document.pop("_id", None)
-        document["id"] = str(result.inserted_id)
+
+        document["id"] = str(
+            result.inserted_id
+        )
 
         return document
