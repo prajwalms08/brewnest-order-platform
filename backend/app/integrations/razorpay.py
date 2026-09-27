@@ -34,3 +34,15 @@ class RazorpayClient:
                 "razorpay_signature": razorpay_signature,
             }
         )
+
+    def refund_payment(
+        self,
+        razorpay_payment_id: str,
+        amount: int,
+    ):
+        return self.client.payment.refund(
+            razorpay_payment_id,
+            {
+                "amount": amount,
+            },
+        )    

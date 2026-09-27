@@ -93,3 +93,58 @@ class PaymentService:
         db.refresh(payment)
 
         return payment
+
+
+    @staticmethod
+    def refund_payment(
+        db: Session,
+        order_id: int,
+    ) -> Payment:
+
+        payment = (
+            db.query(Payment)
+            .filter(Payment.order_id == order_id)
+            .order_by(Payment.created_at.desc())
+            .first()
+        )
+
+        if payment is None:
+            raise HTTPException(
+                status_code=404,
+                detail="Payment not found",
+            )
+
+        if payment.status != "PAID":
+            raise HTTPException(
+                status_code=400,
+                detail="Payment must be PAID before refund",
+            )
+
+        if payment.razorpay_payment_id is None:
+            raise HTTPException(
+                status_code=400,
+                detail="Razorpay payment ID not found",
+            )
+
+        razorpay_client = RazorpayClient()
+
+        try:
+            refund = razorpay_client.refund_payment(
+                razorpay_payment_id=payment.razorpay_payment_id,
+                amount=int(payment.amount * 100),
+            )
+        except Exception as exc:
+            print("Razorpay refund error:", exc)
+
+            raise HTTPException(
+                status_code=400,
+                detail=f"Refund failed: {exc}",
+            )
+
+        payment.refund_id = refund["id"]
+        payment.status = "REFUNDED"
+
+        db.commit()
+        db.refresh(payment)
+
+        return payment

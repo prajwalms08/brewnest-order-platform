@@ -37,3 +37,16 @@ def verify_payment(
         db=db,
         payment_data=payment_data,
     )
+
+@router.post(
+    "/refund/{order_id}",
+    response_model=PaymentResponse,
+)
+def refund_payment(
+    order_id: int,
+    db: Session = Depends(get_db),
+):
+    return PaymentService.refund_payment(
+        db=db,
+        order_id=order_id,
+    )

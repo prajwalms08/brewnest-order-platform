@@ -17,6 +17,7 @@ class PaymentResponse(BaseModel):
     id: int
     order_id: int
     razorpay_order_id: str
+    refund_id: str | None
     razorpay_payment_id: str | None
     amount: Decimal
     status: str

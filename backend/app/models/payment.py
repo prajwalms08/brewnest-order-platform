@@ -29,6 +29,12 @@ class Payment(Base):
         unique=True,
     )
 
+    refund_id: Mapped[str | None] = mapped_column(
+        String(100),
+        nullable=True,
+        unique=True,
+    )
+
     amount: Mapped[Decimal] = mapped_column(
         Numeric(10, 2),
         nullable=False,
