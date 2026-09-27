@@ -81,7 +81,33 @@ class OrderService:
             order_id,
         )
 
+    @staticmethod
+    def cancel_order(
+        db: Session,
+        order_id: int,
+    ) -> Order | None:
+
+        order = OrderRepository.get_order_by_id(
+            db,
+            order_id,
+        )
+
         if order is None:
+            return None
+
+        if order.status != "CREATED":
+            raise ValueError(
+                "Order cannot be cancelled after preparation has started"
+            )
+
+        order.status = "CANCELLED"
+
+        db.commit()
+        db.refresh(order)
+
+        return order    
+
+        if order is None:  
             return None
 
         allowed_statuses = [
