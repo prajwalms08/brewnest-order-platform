@@ -74,3 +74,36 @@ async def update_order_status(
         "id": order.id,
         "status": order.status,
     }
+
+@router.patch("/{order_id}/cancel")
+async def cancel_order(
+    order_id: int,
+    db: Session = Depends(get_db),
+):
+    try:
+        order = OrderService.cancel_order(
+            db,
+            order_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=str(exc),
+        )
+
+    if order is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Order not found",
+        )
+
+    await manager.send_status(
+        order.id,
+        order.status,
+    )
+
+    return {
+        "id": order.id,
+        "status": order.status,
+        "message": "Order cancelled successfully",
+    }

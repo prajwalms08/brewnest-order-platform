@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const API_URL = "http://127.0.0.1:9000";
 const WS_URL = "ws://127.0.0.1:9000";
@@ -8,6 +8,8 @@ function CustomerStatus() {
   const [order, setOrder] = useState(null);
   const [status, setStatus] = useState("");
   const [connected, setConnected] = useState(false);
+
+  const websocketRef = useRef(null);
 
   const trackOrder = async () => {
     if (!orderId) {
@@ -29,9 +31,15 @@ function CustomerStatus() {
       setOrder(data);
       setStatus(data.status);
 
+      if (websocketRef.current) {
+        websocketRef.current.close();
+      }
+
       const websocket = new WebSocket(
         `${WS_URL}/ws/orders/${orderId}`
       );
+
+      websocketRef.current = websocket;
 
       websocket.onopen = () => {
         setConnected(true);
@@ -50,10 +58,7 @@ function CustomerStatus() {
       };
 
       websocket.onerror = (error) => {
-        console.error(
-          "WebSocket error:",
-          error
-        );
+        console.error("WebSocket error:", error);
       };
     } catch (error) {
       console.error(
@@ -65,9 +70,47 @@ function CustomerStatus() {
     }
   };
 
+  const cancelOrder = async () => {
+    if (!order) {
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${API_URL}/orders/${order.id}/cancel`,
+        {
+          method: "PATCH",
+        }
+      );
+
+      if (!response.ok) {
+        const errorData = await response.json();
+
+        throw new Error(
+          errorData.detail || "Failed to cancel order"
+        );
+      }
+
+      const data = await response.json();
+
+      setStatus(data.status);
+
+      alert("Order cancelled successfully");
+    } catch (error) {
+      console.error(
+        "Order cancellation failed:",
+        error
+      );
+
+      alert(error.message);
+    }
+  };
+
   useEffect(() => {
     return () => {
-      setConnected(false);
+      if (websocketRef.current) {
+        websocketRef.current.close();
+      }
     };
   }, []);
 
@@ -126,6 +169,12 @@ function CustomerStatus() {
               ? "Connected"
               : "Disconnected"}
           </p>
+
+          {status === "CREATED" && (
+            <button onClick={cancelOrder}>
+              Cancel Order
+            </button>
+          )}
 
           <h3>Items</h3>
 
