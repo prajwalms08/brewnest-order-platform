@@ -1,15 +1,18 @@
+import json
+
 from fastapi import (
     APIRouter,
     Depends,
-    HTTPException,
     Header,
+    HTTPException,
     Request,
 )
 from sqlalchemy.orm import Session
 
-import json
-
 from app.db.session import SessionLocal
+from app.integrations.razorpay import RazorpayClient
+from app.models.order import Order
+from app.models.payment import Payment
 from app.schemas.payment import (
     PaymentCreate,
     PaymentResponse,
@@ -17,6 +20,7 @@ from app.schemas.payment import (
 from app.services.payment_service import (
     PaymentService,
 )
+from app.websocket.manager import manager
 
 
 router = APIRouter(
@@ -72,12 +76,7 @@ async def payment_webhook(
     db: Session = Depends(get_db),
 ):
     body = await request.body()
-
     body_text = body.decode("utf-8")
-
-    from app.integrations.razorpay import (
-        RazorpayClient,
-    )
 
     razorpay_client = RazorpayClient()
 
@@ -100,7 +99,82 @@ async def payment_webhook(
             detail="Invalid webhook payload",
         )
 
+    event = payload.get("event")
+
+    payment_entity = (
+        payload
+        .get("payload", {})
+        .get("payment", {})
+        .get("entity", {})
+    )
+
+    razorpay_order_id = payment_entity.get(
+        "order_id"
+    )
+
+    razorpay_payment_id = payment_entity.get(
+        "id"
+    )
+
+    if not razorpay_order_id or not razorpay_payment_id:
+        return {
+            "status": "ignored",
+            "message": "Payment information not found",
+        }
+
+    payment = (
+        db.query(Payment)
+        .filter(
+            Payment.razorpay_order_id
+            == razorpay_order_id
+        )
+        .first()
+    )
+
+    if payment is None:
+        return {
+            "status": "ignored",
+            "message": "Payment record not found",
+        }
+
+    # Duplicate webhook protection.
+    if (
+        payment.status == "PAID"
+        and payment.razorpay_payment_id
+        == razorpay_payment_id
+    ):
+        return {
+            "status": "already_processed",
+            "event": event,
+        }
+
+    if event == "payment.captured":
+        payment.razorpay_payment_id = (
+            razorpay_payment_id
+        )
+
+        payment.status = "PAID"
+
+        order = (
+            db.query(Order)
+            .filter(
+                Order.id == payment.order_id
+            )
+            .first()
+        )
+
+        if order:
+            order.status = "PAID"
+
+        db.commit()
+
+        return {
+            "status": "processed",
+            "event": event,
+            "order_id": payment.order_id,
+        }
+
     return {
-        "status": "received",
-        "event": payload.get("event"),
+        "status": "ignored",
+        "event": event,
     }
