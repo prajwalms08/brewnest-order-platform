@@ -13,7 +13,13 @@ function App() {
 
   useEffect(() => {
     fetch(`${API_URL}/menu/`)
-      .then((response) => response.json())
+      .then((response) => {
+        if (!response.ok) {
+          throw new Error("Failed to load menu");
+        }
+
+        return response.json();
+      })
       .then((data) => {
         setMenu(data);
       })
@@ -57,11 +63,12 @@ function App() {
     const itemPrice =
       Number(item.price) + modifierTotal;
 
-    const cartKey =
-      `${item.id}-${modifiers
-        .map((modifier) => modifier.name)
-        .sort()
-        .join("-")}`;
+    const modifierKey = modifiers
+      .map((modifier) => modifier.name)
+      .sort()
+      .join("-");
+
+    const cartKey = `${item.id}-${modifierKey}`;
 
     setCart((currentCart) => {
       const existingItem = currentCart.find(
@@ -95,6 +102,19 @@ function App() {
       ...current,
       [item.id]: [],
     }));
+  };
+
+  const increaseQuantity = (cartItem) => {
+    setCart((currentCart) =>
+      currentCart.map((item) =>
+        item.cartKey === cartItem.cartKey
+          ? {
+              ...item,
+              quantity: item.quantity + 1,
+            }
+          : item
+      )
+    );
   };
 
   const decreaseQuantity = (cartKey) => {
@@ -180,6 +200,7 @@ function App() {
 
   const createPayment = async () => {
     if (!order) {
+      alert("No order available for payment");
       return;
     }
 
@@ -193,25 +214,27 @@ function App() {
           },
           body: JSON.stringify({
             order_id: order.id,
-            amount: Number(order.total_amount),
           }),
         }
       );
 
       if (!response.ok) {
+        const errorData = await response.json();
+
         throw new Error(
-          "Failed to create payment"
+          errorData.detail ||
+            "Failed to create payment"
         );
       }
 
       const payment = await response.json();
 
       const options = {
-  
+        // Keep your existing Razorpay TEST Key ID here.
         key: "rzp_test_Tgz6IapCSMkZvS",
 
         amount:
-          Number(order.total_amount) * 100,
+          Number(payment.amount) * 100,
 
         currency: "INR",
 
@@ -222,63 +245,30 @@ function App() {
         order_id:
           payment.razorpay_order_id,
 
-        handler: async function (response) {
-          try {
-            const verifyResponse =
-              await fetch(
-                `${API_URL}/payments/verify`,
-                {
-                  method: "POST",
-                  headers: {
-                    "Content-Type":
-                      "application/json",
-                  },
-                  body: JSON.stringify({
-                    razorpay_order_id:
-                      response.razorpay_order_id,
+        handler: function () {
+          alert(
+            "Payment submitted. Waiting for payment confirmation."
+          );
+        },
 
-                    razorpay_payment_id:
-                      response.razorpay_payment_id,
-
-                    razorpay_signature:
-                      response.razorpay_signature,
-                  }),
-                }
-              );
-
-            if (!verifyResponse.ok) {
-              throw new Error(
-                "Payment verification failed"
-              );
-            }
-
-            const verifiedPayment =
-              await verifyResponse.json();
-
+        modal: {
+          ondismiss: function () {
             console.log(
-              "Payment verified:",
-              verifiedPayment
+              "Razorpay checkout closed"
             );
-
-            alert(
-              "Payment successful and verified!"
-            );
-          } catch (error) {
-            console.error(
-              "Payment verification failed:",
-              error
-            );
-
-            alert(
-              "Payment verification failed"
-            );
-          }
+          },
         },
 
         theme: {
-          color: "#3399cc",
+          color: "#6f4e37",
         },
       };
+
+      if (!window.Razorpay) {
+        throw new Error(
+          "Razorpay Checkout script is not loaded"
+        );
+      }
 
       const razorpay =
         new window.Razorpay(options);
@@ -290,7 +280,7 @@ function App() {
         error
       );
 
-      alert("Failed to create payment");
+      alert(error.message);
     }
   };
 
@@ -362,16 +352,21 @@ function App() {
           <div
             key={item.id}
             style={{
-              border:
-                "1px solid #ccc",
-              padding: "15px",
+              border: "1px solid #ddd",
+              padding: "18px",
               marginBottom: "15px",
-              borderRadius: "8px",
+              borderRadius: "10px",
+              backgroundColor: "#fff",
             }}
           >
             <h3>{item.name}</h3>
 
-            <p>Base Price: ₹{item.price}</p>
+            <p>
+              <strong>
+                Base Price:
+              </strong>{" "}
+              ₹{item.price}
+            </p>
 
             <p>{item.category}</p>
 
@@ -395,7 +390,9 @@ function App() {
 
                       return (
                         <label
-                          key={modifier.name}
+                          key={
+                            modifier.name
+                          }
                           style={{
                             display:
                               "block",
@@ -418,8 +415,9 @@ function App() {
 
                           {" "}
 
-                          {modifier.name}
-                          {" "}
+                          {
+                            modifier.name
+                          }{" "}
                           (+₹
                           {
                             modifier.price
@@ -455,10 +453,12 @@ function App() {
               key={item.cartKey}
               style={{
                 border:
-                  "1px solid #ccc",
+                  "1px solid #ddd",
                 padding: "15px",
                 marginBottom: "10px",
                 borderRadius: "8px",
+                backgroundColor:
+                  "#fff",
               }}
             >
               <h3>{item.name}</h3>
@@ -482,7 +482,10 @@ function App() {
                             modifier.name
                           }
                         >
-                          {modifier.name} +₹
+                          {
+                            modifier.name
+                          }{" "}
+                          +₹
                           {
                             modifier.price
                           }
@@ -520,7 +523,7 @@ function App() {
 
               <button
                 onClick={() =>
-                  addToCart(item)
+                  increaseQuantity(item)
                 }
               >
                 +
@@ -542,7 +545,9 @@ function App() {
             </div>
           ))}
 
-          <h3>Total: ₹{total}</h3>
+          <h3>
+            Total: ₹{total}
+          </h3>
 
           <button
             onClick={placeOrder}
@@ -561,9 +566,11 @@ function App() {
           <div
             style={{
               border:
-                "1px solid #ccc",
-              padding: "15px",
+                "1px solid #ddd",
+              padding: "18px",
               borderRadius: "8px",
+              backgroundColor:
+                "#fff",
             }}
           >
             <p>
@@ -600,7 +607,9 @@ function App() {
 
       <h2>Order History</h2>
 
-      <button onClick={loadOrders}>
+      <button
+        onClick={loadOrders}
+      >
         View Orders
       </button>
 
@@ -612,10 +621,12 @@ function App() {
             key={item.id}
             style={{
               border:
-                "1px solid #ccc",
+                "1px solid #ddd",
               padding: "15px",
               marginTop: "15px",
               borderRadius: "8px",
+              backgroundColor:
+                "#fff",
             }}
           >
             <h3>
