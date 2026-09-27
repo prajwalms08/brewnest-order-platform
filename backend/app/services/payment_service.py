@@ -1,6 +1,7 @@
 from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
+from app.integrations.razorpay import RazorpayClient
 from app.models.order import Order
 from app.models.payment import Payment
 from app.repositories.payment_repository import PaymentRepository
@@ -27,9 +28,18 @@ class PaymentService:
                 detail="Order not found",
             )
 
+        amount_in_paise = int(payment_data.amount * 100)
+
+        razorpay_client = RazorpayClient()
+
+        razorpay_order = razorpay_client.create_order(
+            amount=amount_in_paise,
+            currency="INR",
+        )
+
         payment = Payment(
             order_id=payment_data.order_id,
-            razorpay_order_id="TEMP_ORDER_ID",
+            razorpay_order_id=razorpay_order["id"],
             amount=payment_data.amount,
             status="CREATED",
         )
