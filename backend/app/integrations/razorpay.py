@@ -13,7 +13,11 @@ class RazorpayClient:
             )
         )
 
-    def create_order(self, amount: int, currency: str = "INR"):
+    def create_order(
+        self,
+        amount: int,
+        currency: str = "INR",
+    ):
         return self.client.order.create(
             {
                 "amount": amount,
@@ -33,4 +37,27 @@ class RazorpayClient:
                 "razorpay_payment_id": razorpay_payment_id,
                 "razorpay_signature": razorpay_signature,
             }
+        )
+
+    def refund_payment(
+        self,
+        razorpay_payment_id: str,
+        amount: int,
+    ):
+        return self.client.payment.refund(
+            razorpay_payment_id,
+            {
+                "amount": amount,
+            },
+        )
+
+    def verify_webhook_signature(
+        self,
+        body: str,
+        signature: str,
+    ) -> None:
+        self.client.utility.verify_webhook_signature(
+            body,
+            signature,
+            settings.RAZORPAY_WEBHOOK_SECRET,
         )
