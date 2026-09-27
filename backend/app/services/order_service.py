@@ -11,23 +11,24 @@ from app.schemas.order import OrderCreate
 class OrderService:
 
     @staticmethod
-    def get_order_by_id(db: Session, order_id: int) -> Order | None:
-        return OrderRepository.get_order_by_id(db, order_id)
-   
-    @staticmethod
-    def get_orders(db: Session) -> list[Order]:
-        return OrderRepository.get_orders(db)
+    def create_order(
+        db: Session,
+        order_data: OrderCreate,
+    ) -> Order:
 
-    @staticmethod
-    def create_order(db: Session, order_data: OrderCreate) -> Order:
         if not order_data.items:
-            raise ValueError("Order must contain at least one item")
+            raise ValueError(
+                "Order must contain at least one item"
+            )
 
         total_amount = Decimal("0.00")
         order_items = []
 
         for item in order_data.items:
-            subtotal = item.unit_price * item.quantity
+            subtotal = (
+                item.unit_price * item.quantity
+            )
+
             total_amount += subtotal
 
             order_items.append(
@@ -49,3 +50,54 @@ class OrderService:
             order=order,
             items=order_items,
         )
+
+    @staticmethod
+    def get_orders(
+        db: Session,
+    ) -> list[Order]:
+
+        return OrderRepository.get_orders(db)
+
+    @staticmethod
+    def get_order_by_id(
+        db: Session,
+        order_id: int,
+    ) -> Order | None:
+
+        return OrderRepository.get_order_by_id(
+            db,
+            order_id,
+        )
+
+    @staticmethod
+    def update_order_status(
+        db: Session,
+        order_id: int,
+        status: str,
+    ) -> Order | None:
+
+        order = OrderRepository.get_order_by_id(
+            db,
+            order_id,
+        )
+
+        if order is None:
+            return None
+
+        allowed_statuses = [
+            "CREATED",
+            "PREPARING",
+            "READY",
+        ]
+
+        if status not in allowed_statuses:
+            raise ValueError(
+                "Invalid order status"
+            )
+
+        order.status = status
+
+        db.commit()
+        db.refresh(order)
+
+        return order

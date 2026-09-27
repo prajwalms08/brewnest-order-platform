@@ -46,3 +46,26 @@ def get_order_by_id(
         )
 
     return order
+
+@router.patch("/{order_id}/status")
+def update_order_status(
+    order_id: int,
+    status: str,
+    db: Session = Depends(get_db),
+):
+    order = OrderService.update_order_status(
+        db,
+        order_id,
+        status,
+    )
+
+    if order is None:
+        raise HTTPException(
+            status_code=404,
+            detail="Order not found",
+        )
+
+    return {
+        "id": order.id,
+        "status": order.status,
+    }
