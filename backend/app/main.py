@@ -1,10 +1,10 @@
-from fastapi import FastAPI
-
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
+
+from app.api.routes.barista import router as barista_router
 from app.api.routes.menu import router as menu_router
 from app.api.routes.orders import router as orders_router
 from app.api.routes.payments import router as payments_router
-from fastapi import WebSocket, WebSocketDisconnect
 from app.websocket.manager import manager
 
 
@@ -12,6 +12,7 @@ app = FastAPI(
     title="BrewNest Order Platform",
     version="1.0.0",
 )
+
 
 app.add_middleware(
     CORSMiddleware,
@@ -22,24 +23,25 @@ app.add_middleware(
 )
 
 
+app.include_router(menu_router)
 app.include_router(orders_router)
 app.include_router(payments_router)
-app.include_router(menu_router)
+app.include_router(barista_router)
 
 
 @app.get("/")
-def health_check():
+def root():
     return {
-        "status": "ok",
-        "service": "BrewNest Order Platform",
+        "message": "BrewNest Order Platform API"
     }
+
 
 @app.websocket("/ws/orders/{order_id}")
 async def order_status_websocket(
     websocket: WebSocket,
     order_id: int,
 ):
-    await manager.connect(
+    await manager.connect_order(
         order_id,
         websocket,
     )
@@ -49,4 +51,21 @@ async def order_status_websocket(
             await websocket.receive_text()
 
     except WebSocketDisconnect:
-        manager.disconnect(order_id)
+        manager.disconnect_order(
+            order_id,
+            websocket,
+        )
+
+
+@app.websocket("/ws/barista")
+async def barista_websocket(
+    websocket: WebSocket,
+):
+    await manager.connect_barista(websocket)
+
+    try:
+        while True:
+            await websocket.receive_text()
+
+    except WebSocketDisconnect:
+        manager.disconnect_barista(websocket)

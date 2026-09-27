@@ -21,6 +21,7 @@ from app.services.payment_service import (
     PaymentService,
 )
 from app.websocket.manager import manager
+from backend.app.models import payment
 
 
 router = APIRouter(
@@ -168,10 +169,14 @@ async def payment_webhook(
 
         db.commit()
 
+        await manager.broadcast_barista(
+            payment.order_id
+        )
+
         return {
             "status": "processed",
             "event": event,
-            "order_id": payment.order_id,
+        "order_id": payment.order_id,
         }
 
     return {

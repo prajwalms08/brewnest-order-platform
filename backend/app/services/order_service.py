@@ -1,11 +1,13 @@
 from decimal import Decimal
 
+from fastapi import HTTPException
 from sqlalchemy.orm import Session
 
 from app.models.order import Order
 from app.models.order_item import OrderItem
 from app.repositories.order_repository import OrderRepository
 from app.schemas.order import OrderCreate
+from app.services.payment_service import PaymentService
 
 
 class OrderService:
@@ -34,11 +36,13 @@ class OrderService:
             )
 
             item_price = (
-                item.unit_price + modifier_total
+                item.unit_price
+                + modifier_total
             )
 
             subtotal = (
-                item_price * item.quantity
+                item_price
+                * item.quantity
             )
 
             total_amount += subtotal
@@ -52,7 +56,9 @@ class OrderService:
                     modifiers=[
                         {
                             "name": modifier.name,
-                            "price": float(modifier.price),
+                            "price": float(
+                                modifier.price
+                            ),
                         }
                         for modifier in item.modifiers
                     ],
@@ -74,15 +80,19 @@ class OrderService:
     def get_orders(
         db: Session,
     ) -> list[Order]:
-
         return OrderRepository.get_orders(db)
+
+    @staticmethod
+    def get_paid_orders(
+        db: Session,
+    ) -> list[Order]:
+        return OrderRepository.get_paid_orders(db)
 
     @staticmethod
     def get_order_by_id(
         db: Session,
         order_id: int,
     ) -> Order | None:
-
         return OrderRepository.get_order_by_id(
             db,
             order_id,
@@ -103,13 +113,21 @@ class OrderService:
         if order is None:
             return None
 
-        allowed_statuses = [
-            "CREATED",
-            "PREPARING",
-            "READY",
-        ]
+        if status == "PREPARING":
 
-        if status not in allowed_statuses:
+            if order.status != "PAID":
+                raise ValueError(
+                    "Only paid orders can start preparation"
+                )
+
+        elif status == "READY":
+
+            if order.status != "PREPARING":
+                raise ValueError(
+                    "Only preparing orders can be marked ready"
+                )
+
+        else:
             raise ValueError(
                 "Invalid order status"
             )
@@ -135,12 +153,57 @@ class OrderService:
         if order is None:
             return None
 
-        if order.status != "CREATED":
+        if order.status not in (
+            "CREATED",
+            "PAID",
+        ):
             raise ValueError(
-                "Order cannot be cancelled after preparation has started"
+                "Order can only be cancelled before preparation starts"
+            )
+
+        if order.status == "PAID":
+            PaymentService.refund_payment(
+                db=db,
+                order_id=order.id,
             )
 
         order.status = "CANCELLED"
+
+        db.commit()
+        db.refresh(order)
+
+        return order
+
+    @staticmethod
+    def cancel_order_by_barista(
+        db: Session,
+        order_id: int,
+        reason: str,
+    ) -> Order | None:
+
+        order = OrderRepository.get_order_by_id(
+            db,
+            order_id,
+        )
+
+        if order is None:
+            return None
+
+        if order.status not in (
+            "PREPARING",
+            "READY",
+        ):
+            raise ValueError(
+                "Barista can cancel only after preparation has started"
+            )
+
+        if not reason.strip():
+            raise ValueError(
+                "Cancellation reason is required"
+            )
+
+        order.status = "CANCELLED"
+        order.cancellation_reason = reason.strip()
 
         db.commit()
         db.refresh(order)

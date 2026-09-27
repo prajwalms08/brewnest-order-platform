@@ -8,101 +8,116 @@ function CustomerStatus() {
   const [order, setOrder] = useState(null);
   const [status, setStatus] = useState("");
   const [connected, setConnected] = useState(false);
+  const [error, setError] = useState("");
 
   const websocketRef = useRef(null);
+  const pollingRef = useRef(null);
 
-  const trackOrder = async () => {
-    if (!orderId) {
-      alert("Please enter an order ID");
-      return;
-    }
-
+  const loadOrder = async (id) => {
     try {
-      const response = await fetch(
-        `${API_URL}/orders/${orderId}`
-      );
+      const response = await fetch(`${API_URL}/orders/${id}`);
 
       if (!response.ok) {
-        throw new Error("Order not found");
+        throw new Error("No order exists.");
       }
 
       const data = await response.json();
 
       setOrder(data);
       setStatus(data.status);
-
-      if (websocketRef.current) {
-        websocketRef.current.close();
-      }
-
-      const websocket = new WebSocket(
-        `${WS_URL}/ws/orders/${orderId}`
-      );
-
-      websocketRef.current = websocket;
-
-      websocket.onopen = () => {
-        setConnected(true);
-        console.log("WebSocket connected");
-      };
-
-      websocket.onmessage = (event) => {
-        const data = JSON.parse(event.data);
-
-        setStatus(data.status);
-      };
-
-      websocket.onclose = () => {
-        setConnected(false);
-        console.log("WebSocket disconnected");
-      };
-
-      websocket.onerror = (error) => {
-        console.error("WebSocket error:", error);
-      };
+      setError("");
     } catch (error) {
-      console.error(
-        "Failed to track order:",
-        error
-      );
-
-      alert("Order not found");
+      setOrder(null);
+      setStatus("");
+      setError(error.message);
     }
   };
 
-  const cancelOrder = async () => {
-    if (!order) {
+  const trackOrder = async () => {
+    if (!orderId) {
+      setError("Please enter an order ID.");
       return;
     }
 
+    if (websocketRef.current) {
+      websocketRef.current.close();
+    }
+
+    if (pollingRef.current) {
+      clearInterval(pollingRef.current);
+    }
+
+    await loadOrder(orderId);
+
+    const websocket = new WebSocket(
+      `${WS_URL}/ws/orders/${orderId}`
+    );
+
+    websocketRef.current = websocket;
+
+    websocket.onopen = () => {
+      setConnected(true);
+    };
+
+    websocket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.event === "order_status") {
+        setStatus(data.status);
+
+        setOrder((previousOrder) => {
+          if (!previousOrder) {
+            return previousOrder;
+          }
+
+          return {
+            ...previousOrder,
+            status: data.status,
+          };
+        });
+      }
+    };
+
+    websocket.onclose = () => {
+      setConnected(false);
+    };
+
+    websocket.onerror = () => {
+      setConnected(false);
+    };
+
+    pollingRef.current = setInterval(() => {
+      loadOrder(orderId);
+    }, 2000);
+  };
+
+  const cancelOrder = async () => {
     try {
       const response = await fetch(
-        `${API_URL}/orders/${order.id}/cancel`,
+        `${API_URL}/orders/${orderId}/cancel`,
         {
           method: "PATCH",
         }
       );
 
-      if (!response.ok) {
-        const errorData = await response.json();
+      const data = await response.json();
 
+      if (!response.ok) {
         throw new Error(
-          errorData.detail || "Failed to cancel order"
+          data.detail || "Unable to cancel order"
         );
       }
 
-      const data = await response.json();
-
       setStatus(data.status);
 
-      alert("Order cancelled successfully");
-    } catch (error) {
-      console.error(
-        "Order cancellation failed:",
-        error
-      );
+      setOrder((previousOrder) => ({
+        ...previousOrder,
+        status: data.status,
+      }));
 
-      alert(error.message);
+      setError("");
+    } catch (error) {
+      setError(error.message);
     }
   };
 
@@ -111,19 +126,16 @@ function CustomerStatus() {
       if (websocketRef.current) {
         websocketRef.current.close();
       }
+
+      if (pollingRef.current) {
+        clearInterval(pollingRef.current);
+      }
     };
   }, []);
 
   return (
-    <div
-      style={{
-        maxWidth: "600px",
-        margin: "40px auto",
-        padding: "20px",
-        fontFamily: "Arial, sans-serif",
-      }}
-    >
-      <h1>Track Your Order</h1>
+    <div>
+      <h1>Customer Order Status</h1>
 
       <input
         type="number"
@@ -132,58 +144,51 @@ function CustomerStatus() {
         onChange={(event) =>
           setOrderId(event.target.value)
         }
-        style={{
-          padding: "10px",
-          marginRight: "10px",
-        }}
       />
 
       <button onClick={trackOrder}>
         Track Order
       </button>
 
+      {error && (
+        <p>
+          <strong>{error}</strong>
+        </p>
+      )}
+
       {order && (
-        <div
-          style={{
-            marginTop: "30px",
-            border: "1px solid #ccc",
-            padding: "20px",
-            borderRadius: "8px",
-          }}
-        >
+        <div>
           <h2>Order #{order.id}</h2>
 
           <p>
-            <strong>Status:</strong>{" "}
-            {status}
+            Total: ₹{order.total_amount}
           </p>
 
           <p>
-            <strong>Total:</strong> ₹
-            {order.total_amount}
+            Status: <strong>{status}</strong>
           </p>
 
           <p>
-            <strong>Live Connection:</strong>{" "}
-            {connected
-              ? "Connected"
-              : "Disconnected"}
+            Live connection:{" "}
+            {connected ? "Connected" : "Disconnected"}
           </p>
 
-          {status === "CREATED" && (
+          {status === "CANCELLED" &&
+            order.cancellation_reason && (
+              <p>
+                <strong>
+                  Cancellation reason:
+                </strong>{" "}
+                {order.cancellation_reason}
+              </p>
+            )}
+
+          {(status === "CREATED" ||
+            status === "PAID") && (
             <button onClick={cancelOrder}>
               Cancel Order
             </button>
           )}
-
-          <h3>Items</h3>
-
-          {order.items.map((item) => (
-            <p key={item.id}>
-              {item.item_name} ×{" "}
-              {item.quantity}
-            </p>
-          ))}
         </div>
       )}
     </div>
