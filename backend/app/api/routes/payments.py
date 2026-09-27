@@ -17,11 +17,8 @@ from app.schemas.payment import (
     PaymentCreate,
     PaymentResponse,
 )
-from app.services.payment_service import (
-    PaymentService,
-)
+from app.services.payment_service import PaymentService
 from app.websocket.manager import manager
-from backend.app.models import payment
 
 
 router = APIRouter(
@@ -117,7 +114,10 @@ async def payment_webhook(
         "id"
     )
 
-    if not razorpay_order_id or not razorpay_payment_id:
+    if (
+        not razorpay_order_id
+        or not razorpay_payment_id
+    ):
         return {
             "status": "ignored",
             "message": "Payment information not found",
@@ -138,7 +138,7 @@ async def payment_webhook(
             "message": "Payment record not found",
         }
 
-    # Duplicate webhook protection.
+    # Ignore duplicate webhook delivery.
     if (
         payment.status == "PAID"
         and payment.razorpay_payment_id
@@ -164,7 +164,7 @@ async def payment_webhook(
             .first()
         )
 
-        if order:
+        if order is not None:
             order.status = "PAID"
 
         db.commit()
@@ -176,7 +176,7 @@ async def payment_webhook(
         return {
             "status": "processed",
             "event": event,
-        "order_id": payment.order_id,
+            "order_id": payment.order_id,
         }
 
     return {

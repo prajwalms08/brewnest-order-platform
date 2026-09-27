@@ -1,23 +1,25 @@
 # BrewNest Order Platform
 
-A full-stack coffee shop ordering platform built with modern web technologies.
+A full-stack coffee shop ordering system built with React, FastAPI, PostgreSQL, MongoDB, Docker, WebSocket, and Razorpay Test Mode.
 
 ## Project Overview
 
 BrewNest allows customers to:
 
-- Browse the coffee menu
-- Select item modifiers
-- Add items to a cart
-- Place orders
-- Make online payments
-- Track order status in real time
+- Browse the coffee shop menu
+- Customize items using modifiers
+- Add items to the cart
+- Place an order
+- Pay using Razorpay Test Mode
+- Track order status live
+- Cancel an eligible order
 
 Baristas can:
 
-- View incoming orders
-- Update order status
-- Manage the preparation workflow
+- See only paid orders
+- Start preparing an order
+- Mark an order as ready
+- Cancel an order after preparation starts with a reason
 
 ## Technology Stack
 
@@ -25,8 +27,7 @@ Baristas can:
 - React
 - Vite
 - JavaScript
-- HTML5
-- CSS3
+- CSS
 
 ### Backend
 - Python
@@ -34,31 +35,46 @@ Baristas can:
 - SQLAlchemy
 
 ### Databases
-- PostgreSQL
-- MongoDB
+- PostgreSQL - orders, order items, payments
+- MongoDB - menu and modifiers
 
 ### Payment
-- Razorpay
+- Razorpay Test Mode
+- Razorpay Checkout
+- Signed Razorpay webhook
 
-### Real-time Communication
-- WebSockets
+### Real-time Updates
+- WebSocket
 
-### DevOps
+### Deployment
 - Docker
 - Docker Compose
-- Git
 
 ## Architecture
 
-The project follows a layered architecture:
-
 ```text
-Frontend
-   ↓
-API Routes
-   ↓
-Services
-   ↓
-Repositories
-   ↓
-Databases
+Customer Kiosk
+     |
+     | REST API
+     v
+   FastAPI
+     |
+     +--------------------+
+     |                    |
+     v                    v
+PostgreSQL             MongoDB
+Orders                 Menu
+Payments               Modifiers
+     |
+     v
+Razorpay
+     |
+     | Signed Webhook
+     v
+FastAPI
+     |
+     | WebSocket
+     +--------------------+
+     |                    |
+     v                    v
+Barista Screen      Customer Status
