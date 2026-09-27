@@ -4,6 +4,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from app.api.routes.menu import router as menu_router
 from app.api.routes.orders import router as orders_router
 from app.api.routes.payments import router as payments_router
+from fastapi import WebSocket, WebSocketDisconnect
+from app.websocket.manager import manager
 
 
 app = FastAPI(
@@ -31,3 +33,20 @@ def health_check():
         "status": "ok",
         "service": "BrewNest Order Platform",
     }
+
+@app.websocket("/ws/orders/{order_id}")
+async def order_status_websocket(
+    websocket: WebSocket,
+    order_id: int,
+):
+    await manager.connect(
+        order_id,
+        websocket,
+    )
+
+    try:
+        while True:
+            await websocket.receive_text()
+
+    except WebSocketDisconnect:
+        manager.disconnect(order_id)
