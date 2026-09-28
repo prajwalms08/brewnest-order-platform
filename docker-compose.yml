@@ -1,0 +1,69 @@
+services:
+
+  postgres:
+    image: postgres:16
+    container_name: brewnest_postgres
+    environment:
+      POSTGRES_USER: coffee_user
+      POSTGRES_PASSWORD: coffee_password
+      POSTGRES_DB: coffee_shop
+    ports:
+      - "5432:5432"
+    volumes:
+      - brewnest_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U coffee_user -d coffee_shop"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  mongo:
+    image: mongo:7
+    container_name: brewnest_mongodb
+    ports:
+      - "27017:27017"
+    volumes:
+      - brewnest_mongodb_data:/data/db
+      - ./database/seed-menu.js:/docker-entrypoint-initdb.d/seed-menu.js:ro
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: ./backend
+    container_name: brewnest_backend
+    env_file:
+      - ./backend/.env
+    environment:
+      DATABASE_URL: postgresql+psycopg2://coffee_user:coffee_password@postgres:5432/coffee_shop
+      MONGODB_URL: mongodb://mongo:27017
+      MONGODB_DATABASE: brewnest
+    ports:
+      - "9000:9000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+    command:
+      [
+        "sh",
+        "-c",
+        "python -m app.db.init_db && uvicorn app.main:app --host 0.0.0.0 --port 9000"
+      ]
+
+  frontend:
+    build:
+      context: ./frontend
+    container_name: brewnest_frontend
+    ports:
+      - "5173:80"
+    depends_on:
+      - backend
+
+volumes:
+  brewnest_postgres_data:
+  brewnest_mongodb_data:

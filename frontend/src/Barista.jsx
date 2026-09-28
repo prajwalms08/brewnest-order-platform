@@ -1,14 +1,16 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 
 const API_URL = "http://127.0.0.1:9000";
+const WS_URL = "ws://127.0.0.1:9000";
 
 function Barista() {
   const [orders, setOrders] = useState([]);
+  const websocketRef = useRef(null);
 
   const loadOrders = async () => {
     try {
       const response = await fetch(
-        `${API_URL}/orders/`
+        `${API_URL}/barista/orders/`
       );
 
       if (!response.ok) {
@@ -16,11 +18,10 @@ function Barista() {
       }
 
       const data = await response.json();
-
       setOrders(data);
     } catch (error) {
       console.error(
-        "Failed to load orders:",
+        "Failed to load barista orders:",
         error
       );
     }
@@ -28,6 +29,39 @@ function Barista() {
 
   useEffect(() => {
     loadOrders();
+
+    const websocket = new WebSocket(
+      `${WS_URL}/ws/barista`
+    );
+
+    websocketRef.current = websocket;
+
+    websocket.onopen = () => {
+      console.log("Barista WebSocket connected");
+    };
+
+    websocket.onmessage = (event) => {
+      const data = JSON.parse(event.data);
+
+      if (data.event === "order_paid") {
+        loadOrders();
+      }
+    };
+
+    websocket.onclose = () => {
+      console.log("Barista WebSocket disconnected");
+    };
+
+    websocket.onerror = (error) => {
+      console.error(
+        "Barista WebSocket error:",
+        error
+      );
+    };
+
+    return () => {
+      websocket.close();
+    };
   }, []);
 
   const updateStatus = async (
@@ -42,18 +76,55 @@ function Barista() {
         }
       );
 
+      const data = await response.json();
+
       if (!response.ok) {
         throw new Error(
-          "Failed to update order"
+          data.detail || "Failed to update order"
         );
       }
 
       await loadOrders();
     } catch (error) {
-      console.error(
-        "Failed to update status:",
-        error
+      alert(error.message);
+    }
+  };
+
+  const cancelOrder = async (orderId) => {
+    const reason = window.prompt(
+      "Enter cancellation reason:"
+    );
+
+    if (reason === null) {
+      return;
+    }
+
+    if (!reason.trim()) {
+      alert("Cancellation reason is required");
+      return;
+    }
+
+    try {
+      const response = await fetch(
+        `${API_URL}/barista/orders/${orderId}/cancel?reason=${encodeURIComponent(
+          reason
+        )}`,
+        {
+          method: "PATCH",
+        }
       );
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data.detail || "Failed to cancel order"
+        );
+      }
+
+      await loadOrders();
+    } catch (error) {
+      alert(error.message);
     }
   };
 
@@ -66,43 +137,41 @@ function Barista() {
       </button>
 
       {orders.length === 0 ? (
-        <p>No orders available.</p>
+        <p>No paid orders available.</p>
       ) : (
         orders.map((order) => (
-          <div
-            key={order.id}
-            style={{
-              border: "1px solid #ccc",
-              padding: "15px",
-              marginTop: "15px",
-              borderRadius: "8px",
-            }}
-          >
-            <h2>
-              Order #{order.id}
-            </h2>
+          <div key={order.id}>
+            <h2>Order #{order.id}</h2>
 
             <p>
-              <strong>Status:</strong>{" "}
-              {order.status}
+              Total: ₹{order.total_amount}
             </p>
 
             <p>
-              <strong>Total:</strong> ₹
-              {order.total_amount}
+              Status: <strong>{order.status}</strong>
             </p>
 
-            <h3>Items</h3>
-
-            {order.items &&
-              order.items.map((item) => (
-                <p key={item.id}>
-                  {item.item_name} ×{" "}
-                  {item.quantity}
+            {order.items.map((item) => (
+              <div key={item.id}>
+                <p>
+                  {item.item_name} × {item.quantity}
                 </p>
-              ))}
 
-            {order.status === "CREATED" && (
+                {item.modifiers.length > 0 && (
+                  <p>
+                    Modifiers:{" "}
+                    {item.modifiers
+                      .map(
+                        (modifier) =>
+                          modifier.name
+                      )
+                      .join(", ")}
+                  </p>
+                )}
+              </div>
+            ))}
+
+            {order.status === "PAID" && (
               <button
                 onClick={() =>
                   updateStatus(
@@ -116,17 +185,47 @@ function Barista() {
             )}
 
             {order.status === "PREPARING" && (
+              <>
+                <button
+                  onClick={() =>
+                    updateStatus(
+                      order.id,
+                      "READY"
+                    )
+                  }
+                >
+                  Mark as Ready
+                </button>
+
+                <button
+                  onClick={() =>
+                    cancelOrder(order.id)
+                  }
+                >
+                  Cancel Order
+                </button>
+              </>
+            )}
+
+            {order.status === "READY" && (
               <button
                 onClick={() =>
-                  updateStatus(
-                    order.id,
-                    "READY"
-                  )
+                  cancelOrder(order.id)
                 }
               >
-                Mark as Ready
+                Cancel Order
               </button>
             )}
+
+            {order.status === "CANCELLED" &&
+              order.cancellation_reason && (
+                <p>
+                  Cancellation reason:{" "}
+                  {order.cancellation_reason}
+                </p>
+              )}
+
+            <hr />
           </div>
         ))
       )}
